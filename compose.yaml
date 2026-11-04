@@ -1,0 +1,27 @@
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:3306:3306"
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: taverna_d20
+      MYSQL_USER: taverna_app
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
+    volumes:                                                                
+      - db_data:/var/lib/mysql
+
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  db_data:
