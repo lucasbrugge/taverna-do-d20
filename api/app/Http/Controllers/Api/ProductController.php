@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Services\ProductService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use App\Http\Requests\ListProductsRequest;
 
 class ProductController extends Controller
 {
@@ -14,9 +15,12 @@ class ProductController extends Controller
     ) {
     }
 
-    public function index(): AnonymousResourceCollection
-    {
-        $products = $this->productService->listAll();
+    public function index(
+        ListProductsRequest $request
+    ): AnonymousResourceCollection {
+        $filters = $request->validated();
+
+        $products = $this->productService->listAll($filters);
 
         return ProductResource::collection($products);
     }
