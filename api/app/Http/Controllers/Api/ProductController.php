@@ -24,4 +24,12 @@ class ProductController extends Controller
 
         return ProductResource::collection($products);
     }
+
+    public function show(int $id): ProductResource
+    {
+        $product = $this->productService
+            ->findActiveById($id);
+
+        return new ProductResource($product);
+    }
 }

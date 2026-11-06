@@ -51,4 +51,12 @@ class ProductService
 
         return $query->paginate(12)->withQueryString();
     }
+
+    public function findActiveById(int $id): Product
+    {
+        return Product::query()
+            ->with('category')
+            ->where('is_active', true)
+            ->findOrFail($id);
+    }
 }
