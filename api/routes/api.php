@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\Admin\CategoryController as AdminCategoryController;
+use App\Http\Controllers\Api\Admin\ProductController as AdminProductController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -74,4 +75,10 @@ Route::prefix('admin')
             AdminCategoryController::class,
             'destroy'
         ])->whereNumber('category');
+
+        Route::apiResource(
+            'products',
+            AdminProductController::class
+        );
+
     });
