@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\Admin\CategoryController as AdminCategoryController;
 use App\Http\Controllers\Api\Admin\ProductController as AdminProductController;
+use App\Http\Controllers\Api\CartController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -82,3 +83,20 @@ Route::prefix('admin')
         );
 
     });
+
+Route::get('/cart', [CartController::class, 'index']);
+
+Route::post('/cart/items', [
+    CartController::class,
+    'store'
+]);
+
+Route::patch('/cart/items/{item}', [
+    CartController::class,
+    'update'
+])->whereNumber('item');
+
+Route::delete('/cart/items/{item}', [
+    CartController::class,
+    'destroy'
+])->whereNumber('item');
