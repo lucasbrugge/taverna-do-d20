@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 
 class CartService
 {
-    private const GUEST_COOKIE = 'taverna_guest_cart';
+    public const GUEST_COOKIE = 'taverna_guest_cart';
 
     public function current(Request $request): Cart
     {
@@ -218,6 +218,149 @@ class CartService
             return $this->summary($cart);
         });
     }
+
+
+    public function mergeGuestCart(
+        ?string $guestToken,
+        User $user
+    ): array {
+        $emptyResult = [
+            'merged' => false,
+            'adjustments' => [],
+        ];
+
+        // Nosso token original possui 64 caracteres hexadecimais.
+        if (
+            $guestToken === null ||
+            !preg_match('/\A[a-f0-9]{64}\z/D', $guestToken)
+        ) {
+            return $emptyResult;
+        }
+
+        return DB::transaction(function () use (
+            $guestToken,
+            $user
+        ) {
+            $result = [
+                'merged' => false,
+                'adjustments' => [],
+            ];
+
+            // Serializa fusões simultâneas da mesma conta.
+            User::query()
+                ->whereKey($user->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            // Localiza o carrinho visitante pelo hash do cookie.
+            $guestCart = Cart::query()
+                ->whereNull('user_id')
+                ->where(
+                    'guest_token_hash',
+                    hash('sha256', $guestToken)
+                )
+                ->lockForUpdate()
+                ->first();
+
+            if (!$guestCart) {
+                return $result;
+            }
+
+            // Localiza ou cria o carrinho da conta.
+            $userCart = Cart::query()
+                ->where('user_id', $user->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$userCart) {
+                $userCart = Cart::create([
+                    'user_id' => $user->id,
+                ]);
+            }
+
+            $guestItems = CartItem::query()
+                ->where('cart_id', $guestCart->id)
+                ->orderBy('product_id')
+                ->get();
+
+            foreach ($guestItems as $guestItem) {
+                $product = Product::query()
+                    ->whereKey($guestItem->product_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                // Produtos excluídos ou inativos não são transferidos.
+                if (!$product || !$product->is_active) {
+                    $result['adjustments'][] = [
+                        'product_id' => $guestItem->product_id,
+                        'requested_quantity' => $guestItem->quantity,
+                        'final_quantity' => 0,
+                        'reason' => 'produto_indisponivel',
+                    ];
+
+                    continue;
+                }
+
+                // Verifica se o produto já existe no carrinho da conta.
+                $userItem = CartItem::query()
+                    ->where('cart_id', $userCart->id)
+                    ->where('product_id', $product->id)
+                    ->first();
+
+                $existingQuantity = (int) (
+                    $userItem?->quantity ?? 0
+                );
+
+                $guestQuantity = (int) $guestItem->quantity;
+
+                // Soma as quantidades dos dois carrinhos.
+                $desiredQuantity = $existingQuantity
+                    + $guestQuantity;
+
+                // Limita o resultado ao estoque disponível.
+                $finalQuantity = min(
+                    $desiredQuantity,
+                    max(0, (int) $product->stock)
+                );
+
+                if ($finalQuantity < $desiredQuantity) {
+                    $result['adjustments'][] = [
+                        'product_id' => $product->id,
+                        'requested_quantity' => $desiredQuantity,
+                        'final_quantity' => $finalQuantity,
+                        'reason' => 'estoque_insuficiente',
+                    ];
+                }
+
+                // Estoque zero: remove o item existente, se houver.
+                if ($finalQuantity === 0) {
+                    $userItem?->delete();
+                    continue;
+                }
+
+                if ($userItem) {
+                    $userItem->update([
+                        'quantity' => $finalQuantity,
+                    ]);
+                } else {
+                    CartItem::create([
+                        'cart_id' => $userCart->id,
+                        'product_id' => $product->id,
+                        'quantity' => $finalQuantity,
+                    ]);
+                }
+            }
+
+            // Remove o carrinho visitante após a transferência.
+            // Os itens são excluídos pela FK cascadeOnDelete.
+            $guestCart->delete();
+
+            $result['merged'] = true;
+
+            return $result;
+        }, 3);
+    }
+
 
     private function toCents(string $price): int
     {
