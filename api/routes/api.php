@@ -8,6 +8,9 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\Admin\CategoryController as AdminCategoryController;
 use App\Http\Controllers\Api\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\AddressController;
+use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\Admin\OrderController as AdminOrderController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -82,6 +85,15 @@ Route::prefix('admin')
             AdminProductController::class
         );
 
+        Route::get('/orders', [
+            AdminOrderController::class,
+            'index'
+        ]);
+
+        Route::patch('/orders/{order}/status', [
+            AdminOrderController::class,
+            'updateStatus'
+        ])->whereNumber('order');
     });
 
 Route::get('/cart', [CartController::class, 'index']);
@@ -100,3 +112,51 @@ Route::delete('/cart/items/{item}', [
     CartController::class,
     'destroy'
 ])->whereNumber('item');
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::get('/addresses', [
+        AddressController::class,
+        'index'
+    ]);
+
+    Route::post('/addresses', [
+        AddressController::class,
+        'store'
+    ]);
+
+    Route::put('/addresses/{address}', [
+        AddressController::class,
+        'update'
+    ])->whereNumber('address');
+
+    Route::delete('/addresses/{address}', [
+        AddressController::class,
+        'destroy'
+    ])->whereNumber('address');
+
+    Route::get('/orders', [
+        OrderController::class,
+        'index'
+    ]);
+
+    Route::post('/orders', [
+        OrderController::class,
+        'store'
+    ]);
+
+    Route::get('/orders/{order}', [
+        OrderController::class,
+        'show'
+    ])->whereNumber('order');
+
+    Route::post('/orders/{order}/pay', [
+        OrderController::class,
+        'pay'
+    ])->whereNumber('order');
+
+    Route::post('/orders/{order}/cancel', [
+        OrderController::class,
+        'cancel'
+    ])->whereNumber('order');
+});
