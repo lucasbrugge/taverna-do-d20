@@ -1,0 +1,82 @@
+:root {
+  --taverna-bg: #13100f;
+  --taverna-panel: #241d19;
+  --taverna-border: #5a4533;
+  --taverna-gold: #deb56b;
+  --taverna-light: #f1e5d2;
+}
+
+body {
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #2a211b 0%, var(--taverna-bg) 68%);
+  color: var(--taverna-light);
+}
+a { color: #e8c88e; }
+a:hover { color: #ffe1a7; }
+.navbar { background: #191411; border-bottom: 1px solid var(--taverna-border); }
+.navbar-brand { font-weight: 800; letter-spacing: .04em; color: var(--taverna-gold); }
+.nav-link { color: #e8dbca; }
+.nav-link:hover, .nav-link:focus { color: var(--taverna-gold); }
+.hero {
+  padding: 2.8rem 2rem;
+  border: 1px solid var(--taverna-border);
+  border-radius: 1rem;
+  background: linear-gradient(120deg, #302318, #1b1919);
+  margin-bottom: 1.5rem;
+}
+.hero h1, h1, h2, h3 { color: #f4d29c; }
+.section-title { margin-bottom: 1.2rem; }
+.card, .panel {
+  background: var(--taverna-panel);
+  border: 1px solid var(--taverna-border);
+  color: var(--taverna-light);
+}
+.card { overflow: hidden; }
+.card-img-top, .product-photo { object-fit: cover; background: #332a25; }
+.card-img-top { width: 100%; height: 190px; }
+.product-photo { width: 100%; max-height: 460px; border-radius: .65rem; }
+.image-fallback {
+  display: grid; place-items: center; font-size: 3rem;
+  background: linear-gradient(145deg, #3c3028, #221b19);
+  color: var(--taverna-gold);
+}
+.image-fallback.card-img-top { font-size: 3.8rem; }
+.price { color: #f3c77f; font-weight: 750; font-size: 1.25rem; }
+.btn-primary {
+  --bs-btn-bg: #966b31;
+  --bs-btn-border-color: #b28a52;
+  --bs-btn-hover-bg: #b1843d;
+  --bs-btn-hover-border-color: #c49a5a;
+  --bs-btn-active-bg: #795426;
+  --bs-btn-active-border-color: #b28a52;
+}
+.btn-outline-primary {
+  --bs-btn-color: #efc987;
+  --bs-btn-border-color: #c29960;
+  --bs-btn-hover-bg: #a97735;
+  --bs-btn-hover-border-color: #a97735;
+  --bs-btn-hover-color: #fff;
+}
+.form-control, .form-select { background-color: #1b1715; color: #fff4e6; border-color: #715941; }
+.form-control:focus, .form-select:focus { background-color: #221b17; color: #fff4e6; border-color: #d9ab69; box-shadow: 0 0 0 .2rem #c79b5930; }
+.form-control::placeholder { color: #b9ab9c; }
+.list-group-item { background: #241d19; border-color: var(--taverna-border); color: #f0e0cf; }
+.table { --bs-table-bg: transparent; --bs-table-color: #efe3d3; --bs-table-border-color: #594535; }
+.badge-stock { background: #284735; color: #c7f0d5; }
+.badge-out { background: #63302b; color: #ffd3c8; }
+.line-price { min-width: 110px; text-align: right; }
+#notice:empty { display: none; }
+#notice .alert { margin-bottom: 0; }
+.skeleton { min-height: 130px; }
+.cart-qty { width: 90px; }
+footer { border-top: 1px solid #423227; }
+@media (max-width: 576px) {
+  .hero { padding: 1.6rem 1.15rem; }
+  .hero h1 { font-size: 1.9rem; }
+  .card-img-top { height: 165px; }
+  .line-price { min-width: 0; text-align: left; }
+}
+/* ViaCEP / validação por campo */
+[data-cep-status] { min-height: 1.35rem; }
+form[data-form="address"] .invalid-feedback { margin-top: .25rem; }
+form[data-form="address"] .input-group .form-control.is-invalid { z-index: 2; }

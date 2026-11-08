@@ -3,9 +3,18 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class AddressRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'state' => strtoupper(trim((string) $this->input('state', ''))),
+            'postal_code' => trim((string) $this->input('postal_code', '')),
+        ]);
+    }
+
     public function authorize(): bool
     {
         return $this->user() !== null;
@@ -21,7 +30,14 @@ class AddressRequest extends FormRequest
             'complement' => ['nullable', 'string', 'max:255'],
             'district' => ['required', 'string', 'max:255'],
             'city' => ['required', 'string', 'max:255'],
-            'state' => ['required', 'string', 'size:2'],
+            'state' => [
+                'required',
+                Rule::in([
+                    'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO',
+                    'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI',
+                    'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+                ]),
+            ],
         ];
     }
 }
