@@ -80,3 +80,16 @@ footer { border-top: 1px solid #423227; }
 [data-cep-status] { min-height: 1.35rem; }
 form[data-form="address"] .invalid-feedback { margin-top: .25rem; }
 form[data-form="address"] .input-group .form-control.is-invalid { z-index: 2; }
+
+/* Etapa 15 — painel administrativo. Mantém os estilos Bootstrap e o tema medieval. */
+.admin-tabs .btn { min-width: 118px; }
+.admin-form .form-label { font-weight: 600; }
+.admin-actions { white-space: nowrap; }
+.admin-actions .btn + .btn { margin-left: .35rem; }
+.admin-current-image { width: 160px; height: 105px; object-fit: cover; border-radius: .5rem; }
+.admin-form .invalid-feedback { margin-top: .25rem; }
+.admin-form .form-control.is-invalid, .admin-form .form-select.is-invalid { border-color: #e88782; }
+@media (max-width: 650px) {
+  .admin-actions { white-space: normal; min-width: 100px; }
+  .admin-actions .btn { margin: 2px 0; }
+}

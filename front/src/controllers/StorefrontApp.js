@@ -6,6 +6,11 @@ import { OrderService } from '../services/OrderService.js';
 import { createPages } from '../ui/pages.js';
 import { escapeHtml } from '../ui/format.js';
 import { EventsController } from './EventsController.js';
+import { AdminCategoryService } from '../services/AdminCategoryService.js';
+import { AdminProductService } from '../services/AdminProductService.js';
+import { AdminOrderService } from '../services/AdminOrderService.js';
+import { createAdminPages } from '../ui/adminPages.js';
+import { AdminController } from './AdminController.js';
 
 /** Controla estado, navegação e ciclo de vida. Não executa SQL nem monta payload HTTP. */
 export class StorefrontApp {
@@ -19,16 +24,25 @@ export class StorefrontApp {
       filters: { search: '', category: '', sort: 'recent', page: 1 },
       orderPage: 1, afterLogin: null, selectedAddress: null,
       editingAddress: null,
+      admin: { productPage: 1, orderPage: 1, orderStatus: '',
+        editingProductId: null, editingCategoryId: null, products: [] },
     };
     this.services = {
       auth: new AuthService(), catalog: new CatalogService(),
       cart: new CartService(), addresses: new AddressService(),
       orders: new OrderService(),
+      adminProducts: new AdminProductService(),
+      adminCategories: new AdminCategoryService(),
+      adminOrders: new AdminOrderService(),
     };
     this.pages = createPages(this);
+    this.adminPages = createAdminPages(this);
     this.events = new EventsController(this);
+    this.adminEvents = new AdminController(this);
     this.doc = doc;
   }
+
+  isAdmin() { return this.state.user?.role === 'admin'; }
 
   currentRoute() { return this.location.hash.slice(1) || 'catalogo'; }
 
@@ -63,6 +77,7 @@ export class StorefrontApp {
           ${user ? `
             <a class="nav-link" href="#pedidos">Meus pedidos</a>
             <a class="nav-link" href="#perfil">${escapeHtml(user.name)}</a>
+            ${this.isAdmin() ? '<a class="nav-link" href="#admin/produtos">Painel admin</a>' : ''}
             <button type="button" class="btn btn-sm btn-outline-light" data-action="logout">Sair</button>
           ` : `
             <a class="nav-link" href="#entrar">Entrar</a>
@@ -92,6 +107,18 @@ export class StorefrontApp {
     this.root.innerHTML = '<p class="text-secondary">Carregando...</p>';
     const route = this.currentRoute();
     try {
+      if (route === 'admin') return this.go('#admin/produtos');
+      if (route.startsWith('admin/')) {
+        if (!this.state.user) return this.requireLogin();
+        if (!this.isAdmin()) {
+          this.root.innerHTML = '<h1>Acesso proibido (403)</h1><p>Esta área é exclusiva de administradores.</p><a href="#catalogo">Voltar à loja</a>';
+          return;
+        }
+        if (route === 'admin/produtos') return await this.adminPages.productsPage();
+        if (route === 'admin/categorias') return await this.adminPages.categoriesPage();
+        if (route === 'admin/pedidos') return await this.adminPages.ordersPage();
+        if (/^admin\/pedido\/[1-9]\d*$/.test(route)) return await this.adminPages.orderDetailPage(Number(route.split('/')[2]));
+      }
       if (route === 'catalogo') return await this.pages.catalogPage();
       if (route === 'carrinho') return await this.pages.cartPage();
       if (route === 'checkout') return await this.pages.checkoutPage();
@@ -102,7 +129,7 @@ export class StorefrontApp {
       if (/^pedido\/[1-9]\d*$/.test(route)) return await this.pages.orderPage(Number(route.split('/')[1]));
       this.root.innerHTML = '<h1>Página não encontrada</h1><a href="#catalogo">Voltar ao catálogo</a>';
     } catch (error) {
-      if (error.response?.status === 401 && ['checkout', 'pedidos', 'perfil', 'pedido'].includes(route.split('/')[0])) {
+      if (error.response?.status === 401 && ['checkout', 'pedidos', 'perfil', 'pedido', 'admin'].includes(route.split('/')[0])) {
         this.state.user = null;
         return this.requireLogin();
       }
@@ -113,6 +140,7 @@ export class StorefrontApp {
 
   async start() {
     this.events.attach(this.doc);
+    this.adminEvents.attach(this.doc);
     window.addEventListener('hashchange', () => { void this.render(); });
     try {
       await this.services.auth.csrf();
