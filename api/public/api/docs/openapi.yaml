@@ -1,0 +1,2358 @@
+# Mantido a partir de routes, controllers, requests, resources, services, models e migrations.
+openapi: 3.0.3
+info:
+  title: Taverna do D20 — API
+  version: 1.0.0
+  description: |-
+    Contrato das rotas atuais de routes/api.php e do endpoint CSRF do Sanctum. A versão identifica esta documentação.
+
+    ### Sessão e Try it out
+    Use esta página na mesma origem da aplicação (por exemplo, http://127.0.0.1:8080/api/docs). O navegador preserva os cookies. Antes de POST, PUT, PATCH ou DELETE, a UI solicita GET /sanctum/csrf-cookie e envia o cookie XSRF-TOKEN decodificado no cabeçalho X-XSRF-TOKEN. Para entrar, execute /api/auth/login (ou /api/auth/register); depois execute os endpoints autenticados. /api/auth/logout encerra a sessão. Não há valor a preencher em Authorize: a autenticação é a própria sessão do navegador.
+
+    O guard web usa session, e statefulApi() aplica os middlewares de cookie/sessão/CSRF quando Referer ou Origin corresponde a SANCTUM_STATEFUL_DOMAINS. O Compose inclui 127.0.0.1:8080 e localhost:8080 por padrão. SESSION_COOKIE/APP_NAME controlam o nome do cookie de sessão. Mantenha o mesmo host durante todo o fluxo. Chamadas JSON usam Accept: application/json; uma sessão ausente retorna 401 e uma falha CSRF retorna 419.
+
+    ### Acesso e formatos
+    Cada operação descreve seu acesso e possui x-access: public, session ou admin. User::isAdmin() exige role === admin; o padrão de novos usuários no banco é client. O middleware admin e os Form Requests administrativos verificam essa condição. Não há policies, gates ou permissões adicionais registrados na aplicação. Propriedade de endereços e pedidos é conferida nos controllers/services.
+
+    Resources usam envelope data; paginação acrescenta links e meta. /api/user retorna o model diretamente; status, logout e carrinho retornam JSON direto. Apenas produtos (12), pedidos próprios (10) e pedidos administrativos (10) são paginados. Relações não carregadas são omitidas: listas de pedidos não incluem items; customer aparece apenas na administração.
+
+    Os GET registrados pelo Laravel também aceitam HEAD, com os mesmos cabeçalhos e sem corpo. Os caminhos da especificação já incluem /api; o server / usa a raiz da mesma origem, inclusive para /sanctum/csrf-cookie. / e /up são rotas internas do backend que o proxy público encaminha ao frontend; não são operações desta API pública. Rotas de storage fornecidas pelo framework também ficam fora deste contrato; as imagens públicas são servidas pelo proxy em /storage/.
+servers:
+- url: /
+  description: Mesma origem desta página; os paths já incluem o prefixo /api.
+tags:
+- name: Status
+  description: Disponibilidade da API.
+- name: Autenticação
+  description: Cadastro, sessão web, usuário atual e CSRF do Sanctum.
+- name: Categorias
+  description: Consulta pública de categorias.
+- name: Produtos
+  description: Catálogo público de produtos ativos.
+- name: Carrinho
+  description: Carrinho de visitante por cookie ou da conta autenticada.
+- name: Endereços
+  description: Endereços da própria conta.
+- name: Pedidos
+  description: Checkout e acompanhamento, pagamento simulado e cancelamento.
+- name: Categorias administrativas
+  description: Criação, atualização e exclusão restritas a admin.
+- name: Produtos administrativos
+  description: Catálogo e gestão restritos a admin.
+- name: Pedidos administrativos
+  description: Lista geral e avanço de status restritos a admin.
+paths:
+  /api/status:
+    get:
+      tags:
+      - Status
+      operationId: apiStatus
+      summary: Consultar status da API
+      description: |-
+        Acesso público.
+
+        Retorna os valores fixos application e status.
+      x-access: public
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  application:
+                    type: string
+                    enum:
+                    - Taverna do D20
+                  status:
+                    type: string
+                    enum:
+                    - ok
+                required:
+                - application
+                - status
+  /sanctum/csrf-cookie:
+    get:
+      tags:
+      - Autenticação
+      operationId: csrfCookie
+      summary: Obter cookies de sessão e CSRF
+      description: |-
+        Acesso público.
+
+        Endpoint do Sanctum sob middleware web. Retorna corpo vazio e cookies de sessão e XSRF-TOKEN. O nome do cookie de sessão depende de SESSION_COOKIE/APP_NAME. A UI faz esta chamada automaticamente antes de cada escrita.
+      x-access: public
+      responses:
+        '204':
+          description: Sem conteúdo; cookies enviados por Set-Cookie.
+          headers:
+            Set-Cookie:
+              description: Cookies de sessão (HttpOnly) e XSRF-TOKEN (legível pelo JavaScript). O navegador os gerencia
+                automaticamente.
+              schema:
+                type: string
+  /api/auth/register:
+    post:
+      tags:
+      - Autenticação
+      operationId: register
+      summary: Cadastrar e iniciar sessão
+      description: |-
+        Acesso público.
+
+        Cria usuário com o padrão client no banco, autentica pelo guard web, regenera a sessão e une o carrinho visitante à conta. role não é um campo aceito pelo cadastro.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: public
+      responses:
+        '201':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/Throttled'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterInput'
+  /api/auth/login:
+    post:
+      tags:
+      - Autenticação
+      operationId: login
+      summary: Iniciar sessão
+      description: |-
+        Acesso público.
+
+        Autentica com email e password pelo guard web, regenera a sessão e une o carrinho visitante à conta. Credenciais inválidas retornam 422 com errors.email=["Credenciais inválidas."].
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: public
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/Throttled'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginInput'
+  /api/auth/me:
+    get:
+      tags:
+      - Autenticação
+      operationId: currentUser
+      summary: Consultar usuário autenticado
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        Retorna UserResource com envelope data, sem timestamps.
+      x-access: session
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api/user:
+    get:
+      tags:
+      - Autenticação
+      operationId: rawCurrentUser
+      summary: Consultar model do usuário autenticado
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        Retorna o model User diretamente, sem envelope data; inclui email_verified_at, created_at e updated_at.
+      x-access: session
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawUser'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api/auth/logout:
+    post:
+      tags:
+      - Autenticação
+      operationId: logout
+      summary: Encerrar sessão
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        Encerra a autenticação web, invalida a sessão e regenera o token CSRF. Não recebe corpo.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: session
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    enum:
+                    - Logout realizado com sucesso.
+                required:
+                - message
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+  /api/categories:
+    get:
+      tags:
+      - Categorias
+      operationId: listCategories
+      summary: Listar categorias
+      description: |-
+        Acesso público.
+
+        Todas as categorias ordenadas por name, sem paginação; envelope data.
+      x-access: public
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoriesResponse'
+  /api/products:
+    get:
+      tags:
+      - Produtos
+      operationId: listProducts
+      summary: Listar produtos ativos
+      description: |-
+        Acesso público.
+
+        Ignora produtos excluídos logicamente. Pesquisa por nome com LIKE %search%; category filtra pelo slug existente. Inclui ativos sem estoque. Paginação fixa de 12; links preservam a query string.
+      x-access: public
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductsPage'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      parameters:
+      - name: search
+        in: query
+        description: Pesquisa no nome do produto.
+        schema:
+          type: string
+          maxLength: 100
+          nullable: true
+      - name: category
+        in: query
+        description: Slug que existe em categories.slug; inexistente retorna 422.
+        schema:
+          type: string
+          nullable: true
+      - name: sort
+        in: query
+        description: 'recent: created_at DESC, id DESC; preços: price ASC/DESC, id ASC.'
+        schema:
+          type: string
+          enum:
+          - recent
+          - price_asc
+          - price_desc
+          default: recent
+          nullable: true
+      - name: page
+        in: query
+        description: Página, validada como inteiro >= 1.
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+  /api/products/{id}:
+    get:
+      tags:
+      - Produtos
+      operationId: showProduct
+      summary: Consultar produto ativo
+      description: |-
+        Acesso público.
+
+        Produto inativo, excluído logicamente ou inexistente retorna 404. Sem restrição de estoque.
+      x-access: public
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID numérico do produto.
+        schema:
+          type: integer
+  /api/cart:
+    get:
+      tags:
+      - Carrinho
+      operationId: showCart
+      summary: Consultar ou criar carrinho atual
+      description: |-
+        Acesso público.
+
+        Usa o usuário do guard web quando autenticado; caso contrário usa o cookie taverna_guest_cart, HttpOnly, SameSite=Lax, válido por 30 dias. Cria o carrinho/cookie se necessário, inclusive neste GET. Preserve os cookies e a origem stateful para reutilizar o carrinho. Sem paginação ou envelope data.
+      x-access: public
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+  /api/cart/items:
+    post:
+      tags:
+      - Carrinho
+      operationId: addCartItem
+      summary: Adicionar quantidade ao carrinho
+      description: |-
+        Acesso público.
+
+        Disponível para visitantes e usuários. Soma quantity ao item do mesmo produto. Não reserva estoque. Produto inativo/sem estoque retorna 422 (product_id); quantidade total acima do estoque retorna 422 (quantity). Produto excluído logicamente pode retornar 404 após exists.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: public
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartItemInput'
+  /api/cart/items/{item}:
+    patch:
+      tags:
+      - Carrinho
+      operationId: updateCartItem
+      summary: Definir quantidade ou remover item
+      description: |-
+        Acesso público.
+
+        Disponível para visitantes e usuários, somente no carrinho atual. quantity=0 remove o item, mesmo se o produto estiver indisponível. Produto inativo/excluído ou quantidade acima do estoque retorna 422 em quantity. Item de outro carrinho retorna 404.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: public
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      parameters:
+      - name: item
+        in: path
+        required: true
+        description: ID da linha do carrinho, não do produto.
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartItemUpdateInput'
+    delete:
+      tags:
+      - Carrinho
+      operationId: deleteCartItem
+      summary: Remover item do carrinho
+      description: |-
+        Acesso público.
+
+        Disponível para visitantes e usuários; remove somente do carrinho atual. Item de outro carrinho retorna 404. Não recebe corpo. Retorna o resumo restante com 200.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: public
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+      parameters:
+      - name: item
+        in: path
+        required: true
+        description: ID da linha do carrinho.
+        schema:
+          type: integer
+  /api/addresses:
+    get:
+      tags:
+      - Endereços
+      operationId: listAddresses
+      summary: Listar próprios endereços
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        Somente endereços do usuário autenticado, por created_at DESC, sem paginação. Admin também lista apenas seus endereços.
+      x-access: session
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags:
+      - Endereços
+      operationId: createAddress
+      summary: Cadastrar endereço próprio
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        O user_id vem da sessão. Não consulta serviços externos de CEP.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: session
+      responses:
+        '201':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressInput'
+  /api/addresses/{address}:
+    put:
+      tags:
+      - Endereços
+      operationId: updateAddress
+      summary: Atualizar endereço próprio
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        Exige o corpo completo, exceto complement. Endereço de outro usuário retorna 403, inclusive para admin. Pedidos anteriores mantêm o snapshot original.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: session
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      parameters:
+      - name: address
+        in: path
+        required: true
+        description: ID numérico do endereço.
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressInput'
+    delete:
+      tags:
+      - Endereços
+      operationId: deleteAddress
+      summary: Excluir endereço próprio
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        Endereço de outro usuário retorna 403, inclusive para admin. FK dos pedidos passa a null e o snapshot shipping_address é preservado. Não recebe corpo.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: session
+      responses:
+        '204':
+          description: Endereço excluído; sem conteúdo.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+      parameters:
+      - name: address
+        in: path
+        required: true
+        description: ID numérico do endereço.
+        schema:
+          type: integer
+  /api/orders:
+    get:
+      tags:
+      - Pedidos
+      operationId: listOrders
+      summary: Listar próprios pedidos
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        Somente pedidos do usuário autenticado, mesmo se admin. Ordenação por id DESC, 10 por página. Omite items e customer; não aceita filtro de status.
+      x-access: session
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdersPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+      parameters:
+      - name: page
+        in: query
+        description: Página do paginator Laravel. Nas listagens administrativas e de pedidos não há Form Request
+          validando page; valores inválidos caem na primeira página.
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+    post:
+      tags:
+      - Pedidos
+      operationId: checkout
+      summary: Criar pedido a partir do carrinho
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        Exige endereço da própria conta e carrinho não vazio. Em transação, revalida disponibilidade/estoque, congela endereço, nomes e preços, desconta estoque e esvazia o carrinho. Cria pending_payment; frete atual 0.00. Limite monetário por item/total: 99999999.99. Endereço de outra conta, carrinho vazio, indisponibilidade ou valores excedidos retornam 422 (address_id ou cart).
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: session
+      responses:
+        '201':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutInput'
+  /api/orders/{order}:
+    get:
+      tags:
+      - Pedidos
+      operationId: showOrder
+      summary: Consultar pedido
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        Permitido ao proprietário ou a admin. Inclui items; omite customer.
+      x-access: session
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: order
+        in: path
+        required: true
+        description: ID numérico do pedido.
+        schema:
+          type: integer
+  /api/orders/{order}/pay:
+    post:
+      tags:
+      - Pedidos
+      operationId: payOrder
+      summary: Confirmar pagamento de pedido pendente
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        Somente o comprador, inclusive quando o solicitante é admin. Simulação local: não recebe dados de cartão nem chama gateway. pending_payment → paid e preenche paid_at. Não recebe corpo.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: session
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Pedido não está aguardando pagamento.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+      parameters:
+      - name: order
+        in: path
+        required: true
+        description: ID numérico do pedido.
+        schema:
+          type: integer
+  /api/orders/{order}/cancel:
+    post:
+      tags:
+      - Pedidos
+      operationId: cancelOrder
+      summary: Cancelar pedido pendente e repor estoque
+      description: |-
+        Exige sessão autenticada (auth:sanctum).
+
+        Permitido ao proprietário ou a admin, apenas em pending_payment. Repõe estoque inclusive de produtos excluídos logicamente, muda para canceled e preenche canceled_at em transação. Não recebe corpo.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: session
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Somente pedidos pendentes podem ser cancelados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+      parameters:
+      - name: order
+        in: path
+        required: true
+        description: ID numérico do pedido.
+        schema:
+          type: integer
+  /api/admin/categories:
+    post:
+      tags:
+      - Categorias administrativas
+      operationId: createCategory
+      summary: Criar categoria
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        Cria somente name e slug; não gera slug automaticamente.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: admin
+      responses:
+        '201':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryInput'
+  /api/admin/categories/{category}:
+    put:
+      tags:
+      - Categorias administrativas
+      operationId: putCategory
+      summary: Atualizar categoria
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        Atualização parcial para ambos os métodos. Slug deve permanecer único, ignorando a categoria atual.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: admin
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      parameters:
+      - name: category
+        in: path
+        required: true
+        description: ID numérico da categoria.
+        schema:
+          type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryUpdateInput'
+    patch:
+      tags:
+      - Categorias administrativas
+      operationId: patchCategory
+      summary: Atualizar categoria
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        Atualização parcial para ambos os métodos. Slug deve permanecer único, ignorando a categoria atual.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: admin
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      parameters:
+      - name: category
+        in: path
+        required: true
+        description: ID numérico da categoria.
+        schema:
+          type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryUpdateInput'
+    delete:
+      tags:
+      - Categorias administrativas
+      operationId: deleteCategory
+      summary: Excluir categoria sem produtos
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        Bloqueia exclusão quando há qualquer produto vinculado, inclusive excluído logicamente. Não recebe corpo.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: admin
+      responses:
+        '204':
+          description: Categoria excluída; sem conteúdo.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Não é possível excluir uma categoria com produtos vinculados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+      parameters:
+      - name: category
+        in: path
+        required: true
+        description: ID numérico da categoria.
+        schema:
+          type: integer
+  /api/admin/products:
+    get:
+      tags:
+      - Produtos administrativos
+      operationId: listAdminProducts
+      summary: Listar produtos ativos e inativos
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        Ignora excluídos logicamente; id DESC, 12 por página. Não aplica filtros search/category/sort do catálogo.
+      x-access: admin
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductsPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+      parameters:
+      - name: page
+        in: query
+        description: Página do paginator Laravel. Nas listagens administrativas e de pedidos não há Form Request
+          validando page; valores inválidos caem na primeira página.
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+    post:
+      tags:
+      - Produtos administrativos
+      operationId: createProduct
+      summary: Criar produto com imagem opcional
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        Aceita JSON sem arquivo ou multipart/form-data para upload. Armazena imagens no disco public em products/. Retorna o model recém-criado: price e stock podem conservar o tipo recebido. category é carregada.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: admin
+      responses:
+        '201':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedProductResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '413':
+          description: 'Corpo acima de client_max_body_size 5m do proxy nginx existente; retorna HTML antes de alcançar
+            o Laravel. O limite de imagem do Form Request é menor: 2048 KiB (422).'
+          content:
+            text/html:
+              schema:
+                type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProductMultipartInput'
+  /api/admin/products/{product}:
+    get:
+      tags:
+      - Produtos administrativos
+      operationId: showAdminProduct
+      summary: Consultar produto ativo ou inativo
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        Excluídos logicamente retornam 404. Inclui category.
+      x-access: admin
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: product
+        in: path
+        required: true
+        description: ID do produto (route model binding).
+        schema:
+          type: integer
+    put:
+      tags:
+      - Produtos administrativos
+      operationId: putProduct
+      summary: Atualizar produto parcialmente
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        PUT e PATCH aceitam campos parciais. Upload novo substitui a imagem e apaga o arquivo anterior; omitir image ou enviar null conserva a imagem. Multipart direto é processado pelo PHP 8.4/Symfony do contêiner. Também é possível usar POST com _method=PATCH ou PUT, como faz o frontend; não é uma rota POST adicional.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: admin
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '413':
+          description: 'Corpo acima de client_max_body_size 5m do proxy nginx existente; retorna HTML antes de alcançar
+            o Laravel. O limite de imagem do Form Request é menor: 2048 KiB (422).'
+          content:
+            text/html:
+              schema:
+                type: string
+      parameters:
+      - name: product
+        in: path
+        required: true
+        description: ID do produto (route model binding).
+        schema:
+          type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductUpdateInput'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProductMultipartUpdateInput'
+    patch:
+      tags:
+      - Produtos administrativos
+      operationId: patchProduct
+      summary: Atualizar produto parcialmente
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        PUT e PATCH aceitam campos parciais. Upload novo substitui a imagem e apaga o arquivo anterior; omitir image ou enviar null conserva a imagem. Multipart direto é processado pelo PHP 8.4/Symfony do contêiner. Também é possível usar POST com _method=PATCH ou PUT, como faz o frontend; não é uma rota POST adicional.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: admin
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '413':
+          description: 'Corpo acima de client_max_body_size 5m do proxy nginx existente; retorna HTML antes de alcançar
+            o Laravel. O limite de imagem do Form Request é menor: 2048 KiB (422).'
+          content:
+            text/html:
+              schema:
+                type: string
+      parameters:
+      - name: product
+        in: path
+        required: true
+        description: ID do produto (route model binding).
+        schema:
+          type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductUpdateInput'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProductMultipartUpdateInput'
+    delete:
+      tags:
+      - Produtos administrativos
+      operationId: deleteProduct
+      summary: Excluir produto logicamente
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        Soft delete: preserva referências e arquivo de imagem. Produto deixa de aparecer nas consultas de produtos e fica indisponível no carrinho. Não recebe corpo.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: admin
+      responses:
+        '204':
+          description: Produto excluído logicamente; sem conteúdo.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+      parameters:
+      - name: product
+        in: path
+        required: true
+        description: ID do produto (route model binding).
+        schema:
+          type: integer
+  /api/admin/orders:
+    get:
+      tags:
+      - Pedidos administrativos
+      operationId: listAdminOrders
+      summary: Listar pedidos de todos os clientes
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        id DESC, 10 por página. Inclui customer e omite items. Filtro opcional pelo status exato.
+      x-access: admin
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOrdersPage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      parameters:
+      - name: page
+        in: query
+        description: Página do paginator Laravel. Nas listagens administrativas e de pedidos não há Form Request
+          validando page; valores inválidos caem na primeira página.
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: status
+        in: query
+        description: Status opcional; inválido retorna 422.
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/OrderStatus'
+          nullable: true
+  /api/admin/orders/{order}/status:
+    patch:
+      tags:
+      - Pedidos administrativos
+      operationId: advanceOrderStatus
+      summary: Marcar pedido como enviado ou entregue
+      description: |-
+        Exige sessão autenticada e role exatamente admin (middleware admin e User::isAdmin()).
+
+        Aceita somente paid → shipped (preenche shipped_at) ou shipped → delivered (preenche delivered_at). Inclui items e customer. Não permite pagar/cancelar por esta rota.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: admin
+      responses:
+        '200':
+          description: Operação concluída.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Transição de status inválida.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      parameters:
+      - name: order
+        in: path
+        required: true
+        description: ID numérico do pedido.
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderStatusInput'
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+      description: 'Formato JSON dos erros HTTP com Accept: application/json. APP_DEBUG pode acrescentar exception,
+        file, line e trace.'
+      required:
+      - message
+    ValidationError:
+      type: object
+      properties:
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      description: Erros de Form Requests, validações dos controllers ou regras de negócio. As chaves de errors
+        identificam os campos afetados.
+      required:
+      - message
+      - errors
+    Money:
+      type: string
+      pattern: ^\d+\.\d{2}$
+      example: '49.90'
+      description: Valor decimal serializado como string, com duas casas.
+    DateTime:
+      type: string
+      format: date-time
+    NullableDateTime:
+      type: string
+      format: date-time
+      nullable: true
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          description: isAdmin() compara exatamente com admin; o padrão persistido do cadastro é client. Não há
+            enum no banco.
+      required:
+      - id
+      - name
+      - email
+      - role
+    RegisteredUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          nullable: true
+          description: 'O cadastro retorna o model recém-criado sem refresh: o default client do banco ainda não
+            foi carregado e role pode ser null. /auth/me já retorna client.'
+      required:
+      - id
+      - name
+      - email
+      - role
+    RawUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          description: isAdmin() compara exatamente com admin; o padrão persistido do cadastro é client. Não há
+            enum no banco.
+        email_verified_at:
+          $ref: '#/components/schemas/NullableDateTime'
+        created_at:
+          $ref: '#/components/schemas/NullableDateTime'
+        updated_at:
+          $ref: '#/components/schemas/NullableDateTime'
+      description: Model User serializado diretamente por /api/user, sem envelope data. password e remember_token
+        ficam ocultos.
+      required:
+      - id
+      - name
+      - email
+      - role
+      - email_verified_at
+      - created_at
+      - updated_at
+    CartMerge:
+      type: object
+      properties:
+        merged:
+          type: boolean
+        adjustments:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: integer
+              requested_quantity:
+                type: integer
+              final_quantity:
+                type: integer
+              reason:
+                type: string
+                enum:
+                - produto_indisponivel
+                - estoque_insuficiente
+            required:
+            - product_id
+            - requested_quantity
+            - final_quantity
+            - reason
+      description: 'Fusão do carrinho visitante na conta. Soma quantidades, limita ao estoque, descarta produtos
+        inativos/excluídos e remove o carrinho visitante. Sem carrinho visitante válido: merged=false e adjustments=[].'
+      required:
+      - merged
+      - adjustments
+    AuthResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/User'
+        cart_merge:
+          $ref: '#/components/schemas/CartMerge'
+      required:
+      - data
+      - cart_merge
+    RegisterResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RegisteredUser'
+        cart_merge:
+          $ref: '#/components/schemas/CartMerge'
+      required:
+      - data
+      - cart_merge
+    UserResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/User'
+      required:
+      - data
+    LoginInput:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 1
+      required:
+      - email
+      - password
+    RegisterInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          description: Único em users.email.
+        password:
+          type: string
+          format: password
+          minLength: 8
+        password_confirmation:
+          type: string
+          format: password
+          description: Deve coincidir com password.
+      required:
+      - name
+      - email
+      - password
+      - password_confirmation
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+      required:
+      - id
+      - name
+      - slug
+    CategoryResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Category'
+      required:
+      - data
+    CategoriesResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+      required:
+      - data
+    CategoryInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Único em categories.slug; na atualização ignora a própria categoria. Não há validação de
+            formato de slug.
+      required:
+      - name
+      - slug
+    CategoryUpdateInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Único em categories.slug; na atualização ignora a própria categoria. Não há validação de
+            formato de slug.
+      description: PUT e PATCH aceitam atualização parcial. Campos enviados são obrigatórios e não podem ser vazios;
+        corpo vazio é aceito.
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          $ref: '#/components/schemas/Money'
+        stock:
+          type: integer
+        available:
+          type: boolean
+          description: is_active && stock > 0.
+        image_path:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        image_url:
+          type: string
+          nullable: true
+          description: URL do disco public para image_path; pode ser relativa. null quando não há imagem.
+        category:
+          $ref: '#/components/schemas/Category'
+      description: ProductResource com category carregada em todas as operações atuais. Não expõe category_id nem
+        timestamps.
+      required:
+      - id
+      - name
+      - description
+      - price
+      - stock
+      - available
+      - image_path
+      - is_active
+      - image_url
+      - category
+    CreatedProduct:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          oneOf:
+          - type: string
+          - type: number
+          description: 'Sem cast no model: na criação conserva o tipo enviado em price. Nas leituras posteriores
+            o decimal do MySQL é string com duas casas.'
+        stock:
+          oneOf:
+          - type: integer
+          - type: string
+          description: 'Na criação conserva o tipo enviado: inteiro JSON ou string de formulário. Nas leituras posteriores
+            é inteiro.'
+        available:
+          type: boolean
+          description: is_active && stock > 0.
+        image_path:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        image_url:
+          type: string
+          nullable: true
+          description: URL do disco public para image_path; pode ser relativa. null quando não há imagem.
+        category:
+          $ref: '#/components/schemas/Category'
+      description: Resource do model recém-criado, antes de refresh; price e stock conservam o tipo recebido.
+      required:
+      - id
+      - name
+      - description
+      - price
+      - stock
+      - available
+      - image_path
+      - is_active
+      - image_url
+      - category
+    ProductResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Product'
+      required:
+      - data
+    CreatedProductResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CreatedProduct'
+      required:
+      - data
+    ProductInput:
+      type: object
+      properties:
+        category_id:
+          type: integer
+          description: Deve existir em categories.id.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          minLength: 1
+          maxLength: 10000
+        price:
+          type: number
+          minimum: 0.01
+          maximum: 99999999.99
+          multipleOf: 0.01
+          description: numeric; decimal:0,2 (zero a duas casas decimais). Também aceita string numérica pelas regras
+            Laravel.
+        stock:
+          type: integer
+          minimum: 0
+        is_active:
+          type: boolean
+          description: 'Validação boolean do Laravel: aceita true, false, 0, 1, "0" e "1".'
+      required:
+      - category_id
+      - name
+      - description
+      - price
+      - stock
+      - is_active
+    ProductUpdateInput:
+      type: object
+      properties:
+        category_id:
+          type: integer
+          description: Deve existir em categories.id.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          minLength: 1
+          maxLength: 10000
+        price:
+          type: number
+          minimum: 0.01
+          maximum: 99999999.99
+          multipleOf: 0.01
+          description: numeric; decimal:0,2 (zero a duas casas decimais). Também aceita string numérica pelas regras
+            Laravel.
+        stock:
+          type: integer
+          minimum: 0
+        is_active:
+          type: boolean
+          description: 'Validação boolean do Laravel: aceita true, false, 0, 1, "0" e "1".'
+      description: PUT e PATCH são parciais; campos enviados não podem ser null/vazios. image=null é aceito e conserva
+        a imagem atual.
+    ProductMultipartInput:
+      type: object
+      properties:
+        category_id:
+          type: integer
+          description: Deve existir em categories.id.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          minLength: 1
+          maxLength: 10000
+        price:
+          type: number
+          minimum: 0.01
+          maximum: 99999999.99
+          multipleOf: 0.01
+          description: numeric; decimal:0,2 (zero a duas casas decimais). Também aceita string numérica pelas regras
+            Laravel.
+        stock:
+          type: integer
+          minimum: 0
+        is_active:
+          type: integer
+          enum:
+          - 0
+          - 1
+          description: Em multipart use 0 ou 1; as strings "true" e "false" não passam na validação boolean.
+        image:
+          type: string
+          format: binary
+          nullable: true
+          description: Imagem JPG/JPEG, PNG ou WebP, até 2048 KiB. Enviar null ou omitir conserva a imagem na atualização.
+            Novo upload substitui o arquivo antigo.
+      required:
+      - category_id
+      - name
+      - description
+      - price
+      - stock
+      - is_active
+    ProductMultipartUpdateInput:
+      type: object
+      properties:
+        category_id:
+          type: integer
+          description: Deve existir em categories.id.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          minLength: 1
+          maxLength: 10000
+        price:
+          type: number
+          minimum: 0.01
+          maximum: 99999999.99
+          multipleOf: 0.01
+          description: numeric; decimal:0,2 (zero a duas casas decimais). Também aceita string numérica pelas regras
+            Laravel.
+        stock:
+          type: integer
+          minimum: 0
+        is_active:
+          type: integer
+          enum:
+          - 0
+          - 1
+          description: Em multipart use 0 ou 1; as strings "true" e "false" não passam na validação boolean.
+        image:
+          type: string
+          format: binary
+          nullable: true
+          description: Imagem JPG/JPEG, PNG ou WebP, até 2048 KiB. Enviar null ou omitir conserva a imagem na atualização.
+            Novo upload substitui o arquivo antigo.
+    PaginationLinks:
+      type: object
+      properties:
+        first:
+          type: string
+          nullable: true
+        last:
+          type: string
+          nullable: true
+        prev:
+          type: string
+          nullable: true
+        next:
+          type: string
+          nullable: true
+      required:
+      - first
+      - last
+      - prev
+      - next
+    PaginationMeta:
+      type: object
+      properties:
+        current_page:
+          type: integer
+        from:
+          type: integer
+          nullable: true
+        last_page:
+          type: integer
+        links:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+                nullable: true
+              label:
+                type: string
+              active:
+                type: boolean
+            required:
+            - url
+            - label
+            - active
+        path:
+          type: string
+        per_page:
+          type: integer
+        to:
+          type: integer
+          nullable: true
+        total:
+          type: integer
+      required:
+      - current_page
+      - from
+      - last_page
+      - links
+      - path
+      - per_page
+      - to
+      - total
+    ProductsPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        links:
+          $ref: '#/components/schemas/PaginationLinks'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      description: 'Produtos em envelope de Resource paginado. Tamanho fixo: 12 registros por página. Sem parâmetro
+        per_page.'
+      required:
+      - data
+      - links
+      - meta
+    CartItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+        name:
+          type: string
+          nullable: true
+        quantity:
+          type: integer
+        stock:
+          type: integer
+        unit_price:
+          $ref: '#/components/schemas/Money'
+        subtotal:
+          $ref: '#/components/schemas/Money'
+        available:
+          type: boolean
+          description: Produto existe, não está excluído logicamente, está ativo e a quantidade não supera o estoque.
+      required:
+      - id
+      - product_id
+      - name
+      - quantity
+      - stock
+      - unit_price
+      - subtotal
+      - available
+    Cart:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItem'
+        total:
+          $ref: '#/components/schemas/Money'
+        items_count:
+          type: integer
+          description: Soma das quantidades, não a quantidade de linhas.
+      description: Resumo direto, sem envelope data; preços e estoque são consultados novamente. Produtos excluídos
+        logicamente ainda aparecem como indisponíveis.
+      required:
+      - items
+      - total
+      - items_count
+    CartItemInput:
+      type: object
+      properties:
+        product_id:
+          type: integer
+          description: exists:products,id; produto excluído logicamente passa em exists, mas a busca do service
+            retorna 404.
+        quantity:
+          type: integer
+          minimum: 1
+          description: Quantidade somada à linha existente; total não pode exceder estoque.
+      required:
+      - product_id
+      - quantity
+    CartItemUpdateInput:
+      type: object
+      properties:
+        quantity:
+          type: integer
+          minimum: 0
+          description: Nova quantidade absoluta. Zero remove a linha.
+      required:
+      - quantity
+    AddressInput:
+      type: object
+      properties:
+        recipient_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        postal_code:
+          type: string
+          pattern: ^[0-9]{8}$
+          example: '85010000'
+          description: Trim antes da validação; oito dígitos sem hífen.
+        street:
+          type: string
+          minLength: 1
+          maxLength: 255
+        number:
+          type: string
+          minLength: 1
+          maxLength: 20
+        complement:
+          type: string
+          maxLength: 255
+          nullable: true
+        district:
+          type: string
+          minLength: 1
+          maxLength: 255
+        city:
+          type: string
+          minLength: 1
+          maxLength: 255
+        state:
+          type: string
+          enum:
+          - AC
+          - AL
+          - AP
+          - AM
+          - BA
+          - CE
+          - DF
+          - ES
+          - GO
+          - MA
+          - MT
+          - MS
+          - MG
+          - PA
+          - PB
+          - PR
+          - PE
+          - PI
+          - RJ
+          - RN
+          - RS
+          - RO
+          - RR
+          - SC
+          - SP
+          - SE
+          - TO
+          description: Trim e conversão para maiúsculas antes da validação.
+      description: 'Mesmo contrato no cadastro e no PUT: todos os campos, exceto complement, são obrigatórios.'
+      required:
+      - recipient_name
+      - postal_code
+      - street
+      - number
+      - district
+      - city
+      - state
+    ShippingAddress:
+      type: object
+      properties:
+        recipient_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        postal_code:
+          type: string
+          pattern: ^[0-9]{8}$
+          example: '85010000'
+          description: Trim antes da validação; oito dígitos sem hífen.
+        street:
+          type: string
+          minLength: 1
+          maxLength: 255
+        number:
+          type: string
+          minLength: 1
+          maxLength: 20
+        complement:
+          type: string
+          maxLength: 255
+          nullable: true
+        district:
+          type: string
+          minLength: 1
+          maxLength: 255
+        city:
+          type: string
+          minLength: 1
+          maxLength: 255
+        state:
+          type: string
+          enum:
+          - AC
+          - AL
+          - AP
+          - AM
+          - BA
+          - CE
+          - DF
+          - ES
+          - GO
+          - MA
+          - MT
+          - MS
+          - MG
+          - PA
+          - PB
+          - PR
+          - PE
+          - PI
+          - RJ
+          - RN
+          - RS
+          - RO
+          - RR
+          - SC
+          - SP
+          - SE
+          - TO
+          description: Trim e conversão para maiúsculas antes da validação.
+      description: Snapshot congelado no checkout, sem id e sem user_id.
+      required:
+      - recipient_name
+      - postal_code
+      - street
+      - number
+      - complement
+      - district
+      - city
+      - state
+    Address:
+      type: object
+      properties:
+        id:
+          type: integer
+        recipient_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        postal_code:
+          type: string
+          pattern: ^[0-9]{8}$
+          example: '85010000'
+          description: Trim antes da validação; oito dígitos sem hífen.
+        street:
+          type: string
+          minLength: 1
+          maxLength: 255
+        number:
+          type: string
+          minLength: 1
+          maxLength: 20
+        complement:
+          type: string
+          maxLength: 255
+          nullable: true
+        district:
+          type: string
+          minLength: 1
+          maxLength: 255
+        city:
+          type: string
+          minLength: 1
+          maxLength: 255
+        state:
+          type: string
+          enum:
+          - AC
+          - AL
+          - AP
+          - AM
+          - BA
+          - CE
+          - DF
+          - ES
+          - GO
+          - MA
+          - MT
+          - MS
+          - MG
+          - PA
+          - PB
+          - PR
+          - PE
+          - PI
+          - RJ
+          - RN
+          - RS
+          - RO
+          - RR
+          - SC
+          - SP
+          - SE
+          - TO
+          description: Trim e conversão para maiúsculas antes da validação.
+      required:
+      - id
+      - recipient_name
+      - postal_code
+      - street
+      - number
+      - complement
+      - district
+      - city
+      - state
+    AddressResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Address'
+      required:
+      - data
+    AddressesResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+      required:
+      - data
+    OrderStatus:
+      type: string
+      enum:
+      - pending_payment
+      - paid
+      - shipped
+      - delivered
+      - canceled
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+        product_name:
+          type: string
+        quantity:
+          type: integer
+        unit_price:
+          $ref: '#/components/schemas/Money'
+        subtotal:
+          $ref: '#/components/schemas/Money'
+      required:
+      - id
+      - product_id
+      - product_name
+      - quantity
+      - unit_price
+      - subtotal
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+      required:
+      - id
+      - name
+      - email
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        subtotal:
+          $ref: '#/components/schemas/Money'
+        shipping:
+          $ref: '#/components/schemas/Money'
+        total:
+          $ref: '#/components/schemas/Money'
+        shipping_address:
+          $ref: '#/components/schemas/ShippingAddress'
+        created_at:
+          $ref: '#/components/schemas/DateTime'
+        paid_at:
+          $ref: '#/components/schemas/NullableDateTime'
+        shipped_at:
+          $ref: '#/components/schemas/NullableDateTime'
+        delivered_at:
+          $ref: '#/components/schemas/NullableDateTime'
+        canceled_at:
+          $ref: '#/components/schemas/NullableDateTime'
+      description: OrderResource sem relações carregadas, usado na listagem do usuário. Não inclui items ou customer;
+        não expõe user_id, address_id nem updated_at.
+      required:
+      - id
+      - status
+      - subtotal
+      - shipping
+      - total
+      - shipping_address
+      - created_at
+      - paid_at
+      - shipped_at
+      - delivered_at
+      - canceled_at
+    OrderWithItems:
+      allOf:
+      - $ref: '#/components/schemas/Order'
+      - type: object
+        properties:
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/OrderItem'
+        required:
+        - items
+      description: Detalhe, checkout, pagamento e cancelamento carregam items; customer é omitido.
+    AdminOrder:
+      allOf:
+      - $ref: '#/components/schemas/Order'
+      - type: object
+        properties:
+          customer:
+            $ref: '#/components/schemas/Customer'
+        required:
+        - customer
+      description: Listagem administrativa inclui customer e omite items.
+    AdminOrderWithItems:
+      allOf:
+      - $ref: '#/components/schemas/OrderWithItems'
+      - type: object
+        properties:
+          customer:
+            $ref: '#/components/schemas/Customer'
+        required:
+        - customer
+      description: Atualização administrativa de status inclui items e customer.
+    OrderResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/OrderWithItems'
+      required:
+      - data
+    AdminOrderResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AdminOrderWithItems'
+      required:
+      - data
+    OrdersPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        links:
+          $ref: '#/components/schemas/PaginationLinks'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      description: 'Somente pedidos do usuário autenticado, inclusive quando ele é admin. Ordem decrescente de id;
+        sem items/customer. Tamanho fixo: 10 registros por página. Sem parâmetro per_page.'
+      required:
+      - data
+      - links
+      - meta
+    AdminOrdersPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOrder'
+        links:
+          $ref: '#/components/schemas/PaginationLinks'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      description: 'Todos os pedidos, em ordem decrescente de id; com customer e sem items. Tamanho fixo: 10 registros
+        por página. Sem parâmetro per_page.'
+      required:
+      - data
+      - links
+      - meta
+    CheckoutInput:
+      type: object
+      properties:
+        address_id:
+          type: integer
+          description: Deve existir em addresses.id e pertencer ao usuário autenticado; a falha de propriedade retorna
+            422.
+      required:
+      - address_id
+    OrderStatusInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - shipped
+          - delivered
+          description: Somente paid → shipped ou shipped → delivered.
+      required:
+      - status
+  responses:
+    Unauthenticated:
+      description: Sessão ausente ou expirada (auth:sanctum).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Usuário sem autorização para esta operação.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    AdminForbidden:
+      description: Acesso restrito a administradores. O usuário autenticado não possui role exatamente admin.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Registro não encontrado, excluído logicamente ou fora do escopo permitido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    CsrfMismatch:
+      description: CSRF inválido/expirado em requisição stateful. Obtenha /sanctum/csrf-cookie, preserve os cookies
+        e envie X-XSRF-TOKEN decodificado.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationFailed:
+      description: Falha de validação; consulte errors por campo.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+    Throttled:
+      description: 'Limite do middleware throttle:5,1 atingido: 5 tentativas por minuto. Login e cadastro compartilham
+        a assinatura do limitador para o mesmo cliente.'
+      headers:
+        Retry-After:
+          description: Segundos até nova tentativa.
+          schema:
+            type: integer
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
