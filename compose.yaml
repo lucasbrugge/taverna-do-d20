@@ -1,27 +1,77 @@
+name: taverna-d20
 
 services:
   db:
     image: mysql:8.4
     restart: unless-stopped
-
-    ports:
-      - "127.0.0.1:3306:3306"
-
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: taverna_d20
-      MYSQL_USER: taverna_app
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-
-    volumes:                                                                
-      - db_data:/var/lib/mysql
-
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-taverna_d20}
+      MYSQL_USER: ${MYSQL_USER:-taverna}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Defina MYSQL_PASSWORD no .env da raiz}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Defina MYSQL_ROOT_PASSWORD no .env da raiz}
+      TZ: America/Sao_Paulo
+    volumes:
+      - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      test:
+        - CMD-SHELL
+        - 'mysql -uroot -p"$$MYSQL_ROOT_PASSWORD" -e "SELECT 1" >/dev/null 2>&1'
       interval: 5s
       timeout: 5s
       retries: 20
-      start_period: 30s
+      start_period: 25s
+    networks: [internal]
+
+  api:
+    build:
+      context: ./api
+      dockerfile: ${API_DOCKERFILE:-Dockerfile.dev}
+    restart: unless-stopped
+    environment:
+      APP_NAME: Taverna do D20
+      APP_ENV: ${APP_ENV:-local}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_KEY: ${APP_KEY:?Copie a APP_KEY de api/.env para o .env da raiz}
+      APP_URL: ${APP_URL:-http://127.0.0.1:8080}
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${MYSQL_DATABASE:-taverna_d20}
+      DB_USERNAME: ${MYSQL_USER:-taverna}
+      DB_PASSWORD: ${MYSQL_PASSWORD:?Defina MYSQL_PASSWORD no .env da raiz}
+      SESSION_DRIVER: database
+      SESSION_DOMAIN: ""
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-127.0.0.1:8080,localhost:8080}
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
+      LOG_CHANNEL: stderr
+    volumes:
+      - product_images:/app/storage/app/public
+    depends_on:
+      db:
+        condition: service_healthy
+    expose: ["80"]
+    networks: [internal]
+
+  front:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:80"
+    volumes:
+      - product_images:/var/www/storage:ro
+    depends_on:
+      - api
+    networks: [internal]
+
+networks:
+  internal:
 
 volumes:
-  db_data:
+  mysql_data:
+  product_images:

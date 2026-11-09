@@ -1,2 +1,4 @@
 /.env
+/api/.env
+/front/.env
 node_modules
