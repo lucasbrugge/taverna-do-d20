@@ -3,5 +3,8 @@
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('welcome');
+    return response()->json([
+        'application' => 'Taverna do D20 API',
+        'status' => 'online',
+    ]);
 });
