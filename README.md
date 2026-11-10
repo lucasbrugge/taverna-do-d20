@@ -9,6 +9,7 @@ Loja virtual acadêmica dedicada a produtos de RPG. O projeto implementa uma API
 - Catálogo público de produtos, detalhes, busca, categorias, ordenação e paginação.
 - Carrinho de visitante persistido no servidor e carrinho de usuário autenticado.
 - Fusão dos carrinhos durante o login/registro, limitada ao estoque disponível.
+- Consulta e edição de nome/e-mail do perfil.
 - Cadastro de endereços com preenchimento por CEP via ViaCEP.
 - Checkout autenticado com validação de estoque, criação do pedido e preços congelados.
 - Pagamento simulado, histórico de pedidos, cancelamento de pedidos pendentes e devolução de estoque.
@@ -174,4 +175,4 @@ curl -i http://127.0.0.1:8080/api/docs/openapi.yaml
 
 O frontend é feito em **HTML/CSS/JavaScript, sem Blade**. Ele utiliza uma única entrada HTML com telas organizadas em módulos JavaScript. A publicação do frontend ocorre via build Vite, servido pelo Nginx. O `proxy/` fornece a entrada HTTP única para frontend, API, CSRF e imagens.
 
-Verifique o checklist funcional exigido pelo professor antes da entrega, principalmente a **edição de nome/e-mail do perfil**, que ainda precisa ser implementada/validada. Os testes automatizados de regras de negócio não fazem parte da lista explícita de itens obrigatórios do enunciado, embora sejam recomendados.
+A edição de nome e e-mail está implementada em `PATCH /api/auth/me`, com autenticação por sessão e validação de e-mail único. O fluxo foi validado manualmente. Os testes automatizados de regras de negócio não fazem parte da lista explícita de itens obrigatórios do enunciado, embora sejam recomendados.
