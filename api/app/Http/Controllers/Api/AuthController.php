@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Validation\ValidationException;
+use App\Http\Requests\UpdateProfileRequest;
 
 class AuthController extends Controller
 {
@@ -125,5 +126,16 @@ class AuthController extends Controller
                 '/'
             )
         );
+    }
+
+    public function updateProfile(
+        UpdateProfileRequest $request
+    ): UserResource {
+        $user = $this->authService->updateProfile(
+            $request->user(),
+            $request->validated()
+        );
+
+        return new UserResource($user);
     }
 }

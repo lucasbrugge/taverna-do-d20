@@ -20,6 +20,13 @@ para servir a documentação.
 3. Execute as operações autenticadas; o navegador preserva a sessão.
 4. Execute `POST /api/auth/logout` para encerrar a sessão.
 
+`PATCH /api/auth/me` atualiza o perfil da própria sessão, sem restrição de role.
+Envie `name` e `email` juntos, ambos obrigatórios e com até 255 caracteres.
+O e-mail deve ser válido e único entre os outros usuários; manter o atual é
+permitido. Ao mudar o e-mail, `email_verified_at` passa a `null` no banco.
+A resposta usa `UserResource` com envelope `data`; senha e role não são
+alterados por essa operação.
+
 `assets/swagger-initializer.js` solicita `/sanctum/csrf-cookie` antes de cada
 escrita, compartilha solicitações CSRF simultâneas, decodifica `XSRF-TOKEN` e
 envia `X-XSRF-TOKEN`. Os cookies são gerenciados pelo navegador, incluindo o
@@ -37,7 +44,7 @@ o endpoint CSRF permanece em `/sanctum/csrf-cookie`.
 
 ## Contrato e fontes
 
-As 35 operações em 25 caminhos correspondem às rotas de `routes/api.php`
+As 36 operações em 25 caminhos correspondem às rotas de `routes/api.php`
 (incluindo ambos PUT/PATCH registrados) e ao endpoint CSRF do Sanctum. HEAD
 implícito dos GET é descrito nas informações gerais. `/`, `/up` e as rotas de
 storage do framework não fazem parte do contrato público deste proxy.
@@ -78,7 +85,7 @@ curl --fail-with-body --head http://127.0.0.1:8080/api/docs/assets/swagger-ui-bu
 Exija 200 sem redirecionamento nos dois primeiros URLs, HTML na página e YAML
 OpenAPI no segundo corpo. Valide o YAML com um validador OpenAPI 3.0 e compare
 os métodos/paths às rotas registradas. No navegador, confirme a renderização
-das 35 operações, a requisição da especificação em seu URL exato e a ausência
+das 36 operações, a requisição da especificação em seu URL exato e a ausência
 de 404 nos assets. Teste catálogo, login, `/api/auth/me`, logout e a restrição
 403 das operações administrativas para um cliente. Nas escritas, confira a
 chamada CSRF 204 anterior e o cabeçalho `X-XSRF-TOKEN`, usando os cookies da

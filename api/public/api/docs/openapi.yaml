@@ -24,7 +24,7 @@ tags:
 - name: Status
   description: Disponibilidade da API.
 - name: Autenticação
-  description: Cadastro, sessão web, usuário atual e CSRF do Sanctum.
+  description: Cadastro, sessão web, consulta e atualização do perfil e CSRF do Sanctum.
 - name: Categorias
   description: Consulta pública de categorias.
 - name: Produtos
@@ -176,6 +176,39 @@ paths:
                 $ref: '#/components/schemas/UserResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+    patch:
+      tags:
+      - Autenticação
+      operationId: updateProfile
+      summary: Atualizar o próprio perfil
+      description: |-
+        Exige sessão autenticada (auth:sanctum), sem restrição de role.
+
+        Atualiza name e email do usuário da sessão. Apesar de usar PATCH, exige ambos os campos. O email deve ser único em users.email, ignorando o próprio usuário; manter o email atual é permitido. Campos adicionais não são usados na atualização, incluindo password e role.
+
+        Se o email mudar, limpa email_verified_at no banco. Retorna UserResource com envelope data e os campos id, name, email e role; email_verified_at não é exposto por este Resource, mas pode ser consultado em /api/user. A sessão permanece autenticada.
+
+        Em chamadas stateful, exige CSRF; o Swagger UI obtém /sanctum/csrf-cookie e envia X-XSRF-TOKEN automaticamente.
+      x-access: session
+      responses:
+        '200':
+          description: Perfil atualizado; retorna os dados do usuário após refresh.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '419':
+          $ref: '#/components/responses/CsrfMismatch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileInput'
   /api/user:
     get:
       tags:
@@ -1389,6 +1422,22 @@ components:
           $ref: '#/components/schemas/User'
       required:
       - data
+    UpdateProfileInput:
+      type: object
+      description: Ambos os campos são obrigatórios, inclusive no PATCH. Apenas name e email são atualizados.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          description: Único em users.email, ignorando o ID do usuário autenticado.
+      required:
+      - name
+      - email
     LoginInput:
       type: object
       properties:

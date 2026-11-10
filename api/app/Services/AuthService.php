@@ -24,4 +24,21 @@ class AuthService
             'password' => $credentials['password'],
         ]);
     }
+
+    public function updateProfile(User $user, array $data): User
+    {
+        $user->fill([
+            'name' => $data['name'],
+            'email' => $data['email'],
+        ]);
+
+        if ($user->isDirty('email')) {
+            $user->email_verified_at = null;
+        }
+
+        $user->save();
+
+        return $user->refresh();
+    }
+
 }
